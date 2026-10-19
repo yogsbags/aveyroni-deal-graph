@@ -1,0 +1,13 @@
+{
+  "max_posts": 12,
+  "posted_limit": "month",
+  "scrape_comments": false,
+  "follow_authors": 8,
+  "queries": [
+    {"query": "sell side mandate", "sector": "M&A mandates"},
+    {"query": "business for sale", "sector": "Business sales"},
+    {"query": "looking to acquire manufacturing", "sector": "Manufacturing"},
+    {"query": "buy side acquisition search", "sector": "Buy-side search"},
+    {"query": "acquisition mandate India", "sector": "India"}
+  ]
+}
