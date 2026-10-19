@@ -1,0 +1,529 @@
+<title>Aveyroni Deal Graph</title>
+<link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: full-height instrument — live canvas on the left, dossier panel on the right (stacks on phones). */
+:root{
+  --bg:#eef0ec; --surface:#f8f9f6; --ink:#17201c; --muted:#5d6a63; --line:#cfd6d0;
+  --root:#17201c; --sector:#47524c; --deal:#24302a;
+  --sell:#c77a12; --buy:#13806f; --mid:#6a63b0; --signal:#8b9590; --closed:#7a4e86; --match:#d2401f;
+  --f-display:"Familjen Grotesk","Helvetica Neue",Arial,sans-serif;
+  --f-body:"IBM Plex Sans","Segoe UI",system-ui,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f1412; --surface:#161d1a; --ink:#e4ebe6; --muted:#93a39a; --line:#2a3530;
+  --root:#e4ebe6; --sector:#a9b8b0; --deal:#d5ded9;
+  --sell:#f0a23a; --buy:#34c2aa; --mid:#9f98e8; --signal:#6e7a74; --closed:#e0b0ea; --match:#ff6a45; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1412; --surface:#161d1a; --ink:#e4ebe6; --muted:#93a39a; --line:#2a3530;
+  --root:#e4ebe6; --sector:#a9b8b0; --deal:#d5ded9;
+  --sell:#f0a23a; --buy:#34c2aa; --mid:#9f98e8; --signal:#6e7a74; --closed:#e0b0ea; --match:#ff6a45; color-scheme:dark}
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:14px;margin:0}
+.app{height:100%;display:grid;grid-template-rows:auto 1fr;padding-inline:16px;padding-block:12px;gap:12px;box-sizing:border-box;min-width:0}
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px;min-width:0}
+h1{font-family:var(--f-display);font-weight:700;font-size:22px;letter-spacing:-.01em;margin:0;text-wrap:balance}
+.sub{color:var(--muted);font-size:12.5px;margin-top:2px}
+.bar{flex:1 1 100%;width:100%;min-width:0;display:flex;flex-wrap:nowrap;align-items:center;gap:6px;overflow-x:auto}
+.stats{display:contents}
+.stat{font-family:var(--f-mono);font-size:10.5px;font-variant-numeric:tabular-nums;border:1px solid var(--line);border-radius:999px;padding:3px 8px;display:flex;align-items:center;gap:5px;background:var(--surface);color:var(--ink);cursor:pointer;height:28px;box-sizing:border-box;white-space:nowrap;flex:0 0 auto}
+.stat[aria-pressed="false"]{opacity:.45}
+.dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+.main{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:12px;min-height:0}
+.stage{position:relative;border:1px solid #1b2940;border-radius:10px;overflow:hidden;background-color:#02040a;background-image:radial-gradient(circle at 12% 18%,rgba(255,255,255,.7) 0 1px,transparent 1.5px),radial-gradient(circle at 78% 32%,rgba(139,196,255,.55) 0 1px,transparent 1.6px),radial-gradient(circle at 42% 76%,rgba(255,220,160,.5) 0 1px,transparent 1.4px),radial-gradient(circle at 92% 86%,rgba(255,255,255,.45) 0 1px,transparent 1.5px),radial-gradient(ellipse at center,#0b1424 0%,#030712 55%,#010208 100%);background-size:280px 240px,360px 300px,430px 360px,520px 440px,100% 100%;box-shadow:inset 0 0 90px rgba(0,0,0,.65);min-height:0}
+canvas{display:block;width:100%;height:100%;touch-action:none;cursor:default}
+canvas.over{cursor:grab}
+canvas.dragging{cursor:grabbing}
+.tools{position:absolute;left:10px;bottom:10px;display:flex;gap:6px;flex-wrap:wrap}
+button.t{font-family:var(--f-mono);font-size:12px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:6px;padding:6px 10px;cursor:pointer}
+button.t:hover{border-color:var(--ink)}
+button:focus-visible,.stat:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--match);outline-offset:2px}
+.live{position:absolute;right:10px;top:10px;font-family:var(--f-mono);font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:3px 9px}
+.live i{width:7px;height:7px;border-radius:50%;background:var(--signal)}
+.live.on i{background:var(--buy);animation:blink 2s infinite}
+@keyframes blink{50%{opacity:.3}}
+.empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px;color:var(--muted);pointer-events:none}
+.empty[hidden]{display:none}
+.empty b{display:block;font-family:var(--f-display);font-size:18px;color:var(--ink);margin-bottom:6px}
+aside{border:1px solid var(--line);border-radius:10px;background:var(--surface);display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.card{padding:14px 16px;border-bottom:1px solid var(--line);overflow:auto;min-height:0}
+.card h2{font-family:var(--f-display);font-size:17px;margin:0 0 2px;font-weight:600;text-wrap:balance}
+.eyebrow{font-family:var(--f-mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;display:flex;gap:6px;align-items:center}
+.kv{display:grid;grid-template-columns:78px minmax(0,1fr);gap:4px 10px;margin-top:10px;font-size:13px}
+.kv dt{color:var(--muted);font-family:var(--f-mono);font-size:11px;padding-top:2px}
+.kv dd{margin:0;overflow-wrap:anywhere}
+a{color:var(--ink)}
+.copy{font-family:var(--f-mono);font-size:11px;border:1px solid var(--line);background:transparent;color:var(--muted);border-radius:4px;padding:1px 6px;margin-left:6px;cursor:pointer}
+.links{margin-top:12px;display:flex;flex-direction:column;gap:4px}
+.lk{font-size:12.5px;display:flex;gap:6px;align-items:baseline;cursor:pointer;background:none;border:0;color:var(--ink);text-align:left;padding:2px 0;font-family:var(--f-body)}
+.lk span{font-family:var(--f-mono);font-size:10.5px;color:var(--muted);min-width:70px}
+.log{flex:1;overflow:auto;padding:10px 16px;min-height:0}
+.log h3{font-family:var(--f-mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0 0 6px;font-weight:500}
+.log ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:5px}
+.log li{font-size:12.5px;display:flex;gap:8px;align-items:baseline}
+.log li em{font-style:normal;font-family:var(--f-mono);font-size:10.5px;color:var(--muted);font-variant-numeric:tabular-nums;min-width:28px}
+.hint{color:var(--muted);font-size:13px;line-height:1.5}
+.scan{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.scan input{font-family:var(--f-body);font-size:13px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:8px;padding:6px 10px;min-width:min(380px,68vw)}
+.refine{display:contents}
+.refine label{display:flex;align-items:center;gap:6px;height:28px;box-sizing:border-box;padding:0 8px 0 10px;border:1px solid var(--line);border-radius:999px;background:var(--surface);font-family:var(--f-mono);font-size:10.5px;letter-spacing:0;text-transform:none;color:var(--ink);white-space:nowrap;flex:0 0 auto}
+.refine label.ticket{padding-right:12px}
+.refine select{font-family:var(--f-mono);font-size:10.5px;color:var(--ink);background:transparent;border:0;padding:0 2px;max-width:none}
+.refine output{font-variant-numeric:tabular-nums;color:var(--muted)}
+.range{position:relative;height:16px;width:132px;display:block}
+.range-bar{position:absolute;left:0;right:0;top:6px;height:3px;border-radius:99px;background:var(--line)}
+.range input[type=range]{position:absolute;left:0;width:100%;top:-1px;margin:0;background:transparent;pointer-events:none;-webkit-appearance:none;appearance:none}
+.range input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;pointer-events:auto;width:12px;height:12px;border-radius:50%;background:var(--ink);border:2px solid var(--surface);cursor:grab}
+.range input[type=range]::-moz-range-thumb{pointer-events:auto;width:12px;height:12px;border-radius:50%;background:var(--ink);border:2px solid var(--surface);cursor:grab}
+@media (max-width:820px){
+  .main{grid-template-columns:1fr;grid-template-rows:62vh auto}
+  aside{max-height:none}
+  .app{height:auto}
+  .log{max-height:260px}
+}
+@media (prefers-reduced-motion: reduce){.live.on i{animation:none}}
+</style>
+
+<div class="app">
+  <header>
+    <div>
+      <h1>Aveyroni Deal Graph</h1>
+      <div class="sub">LinkedIn opportunities, mapped from sector to deal to the people around it. New branches appear as posts are ingested.</div>
+    </div>
+    <form class="scan" id="scanForm">
+      <input id="q" type="search" placeholder="LinkedIn search, for example acquisition mandate manufacturing" aria-label="LinkedIn search">
+      <button class="t" type="submit">Scan</button>
+      <button class="t" id="watch" type="button">Watchlist</button>
+    </form>
+    <div class="bar">
+    <div class="stats" id="stats"></div>
+    <div class="refine">
+      <label>
+        <select id="currency" aria-label="Currency">
+          <option value="any">Any currency</option>
+          <option value="USD">USD $</option>
+          <option value="EUR">EUR €</option>
+          <option value="GBP">GBP £</option>
+          <option value="INR">INR ₹</option>
+          <option value="AED">AED</option>
+          <option value="JPY">JPY ¥</option>
+        </select>
+      </label>
+      <label class="ticket"><output id="ticketLabel" for="ticketMin ticketMax">Any size</output>
+        <span class="range">
+          <span class="range-bar" id="ticketBar"></span>
+          <input id="ticketMin" type="range" min="0" max="1000" value="0" aria-label="Minimum ticket size">
+          <input id="ticketMax" type="range" min="0" max="1000" value="1000" aria-label="Maximum ticket size">
+        </span>
+      </label>
+      <label>
+        <select id="geo" aria-label="Geography"><option value="any">All geographies</option></select>
+      </label>
+      <label>
+        <select id="sector" aria-label="Sector"><option value="any">All sectors</option></select>
+      </label>
+    </div>
+    </div>
+  </header>
+  <div class="main">
+    <div class="stage" id="stage">
+      <canvas id="cv" aria-label="Deal network graph"></canvas>
+      <div class="empty" id="empty"><div><b>Waiting for the first branch</b>Scan LinkedIn, or play the sample, and sectors, deals and people appear here as they are logged.</div></div>
+      <div class="live" id="live"><i></i><span id="liveTxt">connecting</span></div>
+      <div class="tools">
+        <button class="t" id="sample" type="button">Play sample</button>
+        <button class="t" id="replay" type="button">Replay build</button>
+        <button class="t" id="fit" type="button">Fit</button>
+        <button class="t" id="center" type="button">Center</button>
+        <button class="t" id="labels" type="button" aria-pressed="false">All names</button>
+      </div>
+    </div>
+    <aside>
+      <div class="card" id="detail"><div class="eyebrow">Selected</div><p class="hint">Tap a node for the deal, the post, and who is connected. Drag a node or an edge to place it. Drag empty space to pan.</p></div>
+      <div class="log"><h3>Growth log</h3><ol id="log"></ol></div>
+    </aside>
+  </div>
+</div>
+
+<script>
+(function(){
+const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
+const stage=document.getElementById('stage');
+const API_BASE=location.protocol==='file:'?'http://127.0.0.1:8792':'';
+const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+let C={};
+function readColors(){const s=getComputedStyle(document.documentElement);['bg','surface','ink','muted','line','root','sector','deal','sell','buy','mid','signal','closed','match'].forEach(k=>C[k]=s.getPropertyValue('--'+k).trim());}
+readColors();
+new MutationObserver(readColors).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',readColors);
+
+const SIDE={sell:{c:'sell',n:'Direct seller'},buy:{c:'buy',n:'Direct buyer'},intermediary:{c:'mid',n:'Intermediary'},signal:{c:'signal',n:'Other / signal'}};
+const REL={sector:'in sector',posted:'posted',commented:'commented',tagged:'tagged',network:'your network',affiliated:'associated with',match:'possible match',engaged:'engaged',principal:'principal behind'};
+
+// model
+const docs={nodes:new Map(),edges:new Map()};
+const N=new Map(); // id -> sim node
+let E=[]; // visible edges
+let shown=new Set(); // ids revealed (for replay)
+let replaying=false, showAll=false, selected=null, hover=null;
+const filters={sell:true,buy:true,intermediary:true,signal:true,closed:true,currency:'any',geo:'any',sector:'any',t0:0,t1:1000};
+const FX={USD:1,EUR:1.08,GBP:1.27,INR:0.012,AED:0.272,JPY:0.0067};
+const SCALE={any:['USD',1e6,2e9],USD:['USD',1e6,2e9],EUR:['EUR',1e6,2e9],GBP:['GBP',5e5,1e9],INR:['INR',1e7,2e10],AED:['AED',5e6,5e9],JPY:['JPY',1e9,5e11]};
+const PLACES=[['India',/\bindia\b|\bncr\b|\bdelhi\b|\bmumbai\b|\bgoa\b|\buttarakhand\b|\bgujarat\b|\bmaharashtra\b|pan-india|\bpune\b|\bgurgaon\b|\bgurugram\b|\bbengaluru\b|\bchennai\b|\bandhra\b|\bodisha\b|\bsambalpur\b/i],['United Kingdom',/\bunited kingdom\b|\buk\b|\blondon\b|\bmanchester\b|\bbirmingham\b|\bliverpool\b/i],['Spain',/\bspain\b|\bspanish\b|\bmadrid\b|\bbenidorm\b|\bmarbella\b|\bm[aá]laga\b|costa brava|costa del sol|balearic|costa blanca/i],['United Arab Emirates',/\buae\b|\bdubai\b/i],['United States',/\bunited states\b|\busa\b|\bflorida\b|\bcalifornia\b|\blouisiana\b/i],['Italy',/\bitaly\b/i],['Japan',/\bjapan\b|\btokyo\b/i],['Maldives',/\bmaldives\b/i],['Peru',/\bperu\b|m[aá]ncora/i],['Turkey',/\bturkey\b/i],['Aruba',/\baruba\b/i],['Monaco',/\bmonaco\b|monte carlo|monte-carlo/i],['France',/\bfrance\b/i],['Switzerland',/\bswitzerland\b|\bgeneva\b|\bzurich\b/i],['Germany',/\bgermany\b/i],['Portugal',/\bportugal\b|\blisbon\b|\bporto\b/i],['Greece',/\bgreece\b/i],['Europe',/\beurope\b|\beuropean\b/i]];
+
+function color(n){ if(n.state==='closed'&&n.kind==='deal')return C.closed; if(n.kind==='root')return '#f5f7ff'; if(n.kind==='sector')return '#9bb0cf'; if(n.kind==='deal')return n.side?C[SIDE[n.side]?.c||'deal']:'#d7e2f5'; return C[SIDE[n.side]?.c||'signal']; }
+function radius(n){return n.kind==='root'?15:n.kind==='sector'?10:n.kind==='deal'?8.5:5.5;}
+function roleOk(n){ if(n.kind==='deal'&&n.state==='closed'&&!filters.closed)return false; const role=n.kind==='deal'?(postedBy(n)?.side||n.side):n.side; if((n.kind==='person'||n.kind==='deal')&&role&&filters[role]===false)return false; return true;}
+function personDealOk(n){ if(n.kind!=='person')return true; let any=false; for(const e of docs.edges.values()){ const id=e.from===n.id?e.to:e.to===n.id?e.from:null; if(!id)continue; const o=docs.nodes.get(id); if(!o||o.kind!=='deal'||!shown.has(o.id))continue; any=true; if(roleOk(o))return true;} return !any; }
+function refineActive(){return filters.currency!=='any'||filters.geo!=='any'||filters.sector!=='any'||filters.t0>0||filters.t1<1000;}
+function sectorOf(n){ if(!n)return ''; if(n.kind==='sector')return n.label||''; for(const e of docs.edges.values()){ if(e.rel!=='sector'||e.to!==n.id)continue; const s=docs.nodes.get(e.from); if(s&&s.kind==='sector')return s.label||''; } return ''; }
+function sectorOk(n){ if(filters.sector==='any')return true; return sectorOf(n)===filters.sector; }
+function dealInView(n){ if(!n||n.kind!=='deal')return false; if(!shown.has(n.id)||!roleOk(n))return false; return currencyOk(n)&&geoOk(n)&&ticketOk(n)&&sectorOk(n); }
+function smergersBuyerMatched(n){ if(!n||n.kind!=='deal'||!n.id.startsWith('deal-smergers-'))return true; return [...docs.edges.values()].some(e=>e.rel==='match'&&(e.from===n.id||e.to===n.id)&&(()=>{const oid=e.from===n.id?e.to:e.from; const o=docs.nodes.get(oid); return o&&(o.side==='buy'||(o.kind==='person'&&o.side==='buy'));})()); }
+function linkedDeal(n){ for(const e of docs.edges.values()){ const id=e.from===n.id?e.to:e.to===n.id?e.from:null; if(!id)continue; const o=docs.nodes.get(id); if(o&&dealInView(o))return true;} return false; }
+function visibleNode(n){ if(!n)return false; if(!shown.has(n.id)||!roleOk(n)||!personDealOk(n))return false; if(n.kind==='deal'&&n.id.startsWith('deal-smergers-'))return false; if(n.kind==='sector'&&n.label==='Hospitality & healthcare'&&[...docs.nodes.values()].some(o=>o.kind==='sector'&&o.label==='Hospitality')&&[...docs.nodes.values()].some(o=>o.kind==='sector'&&o.label==='Healthcare'))return false; if(!refineActive()||n.kind==='root')return true; if(n.kind==='sector')return filters.sector==='any'?linkedDeal(n):n.label===filters.sector; if(n.kind==='deal')return currencyOk(n)&&geoOk(n)&&ticketOk(n)&&sectorOk(n); return linkedDeal(n);}
+function showLabel(n,nb){ if(n.kind==='root'||n.kind==='sector')return true; if(showAll||view.s>1.15)return true; return !!(nb&&nb.has(n.id)); }
+
+function anchorFor(id){ // spawn next to an already-placed neighbour
+  const d=docs.nodes.get(id);
+  if(d&&d.kind==='sector'){const t=sectorTarget(id);return {x:t.x*.6,y:t.y*.6};}
+  for(const e of docs.edges.values()){ if(e.rel==='network'||e.rel==='match')continue; const o=e.from===id?e.to:e.to===id?e.from:null; if(o&&N.has(o)&&shown.has(o)){const p=N.get(o); const m=Math.hypot(p.x,p.y)||1; return {x:p.x+p.x/m*40,y:p.y+p.y/m*40};} }
+  return {x:(Math.random()-.5)*40,y:(Math.random()-.5)*40};
+}
+function sectorTarget(id){
+  const secs=[...docs.nodes.entries()].filter(([,d])=>d.kind==='sector').sort((a,b)=>(a[1].seq||0)-(b[1].seq||0)).map(([k])=>k);
+  const i=Math.max(0,secs.indexOf(id)), n=Math.max(secs.length,1), ang=-Math.PI/2+i*2*Math.PI/n+Math.PI/n;
+  return {x:Math.cos(ang)*700,y:Math.sin(ang)*700};
+}
+const LAYOUT_KEY='deal-graph-layout';
+let layout={};
+try{layout=JSON.parse(localStorage.getItem(LAYOUT_KEY)||'{}')||{};}catch(err){layout={};}
+function saveLayout(n){layout[n.id]={x:n.x,y:n.y}; try{localStorage.setItem(LAYOUT_KEY,JSON.stringify(layout));}catch(err){}}
+function reveal(id){
+  const d=docs.nodes.get(id); if(!d)return;
+  let n=N.get(id);
+  if(!n){const saved=layout[id]; const a=anchorFor(id);const ang=Math.random()*Math.PI*2;n=saved?{id,x:saved.x,y:saved.y,vx:0,vy:0,pin:true}:{id,x:a.x+Math.cos(ang)*30,y:a.y+Math.sin(ang)*30,vx:0,vy:0};N.set(id,n);}
+  Object.assign(n,d,{id});
+  if(!shown.has(id)){shown.add(id);n.born=performance.now();pushLog(d);}
+  rebuildEdges(); updateStats(); kick();
+}
+function rebuildEdges(){E=[...docs.edges.values()].filter(e=>shown.has(e.from)&&shown.has(e.to)&&N.has(e.from)&&N.has(e.to)).map(e=>({...e,a:N.get(e.from),b:N.get(e.to)}));}
+function edgeShown(e){return e.rel!=='match'||!!(selected||hover);}
+
+// growth log
+const logEl=document.getElementById('log'); let logN=0;
+function pushLog(d){ if(d.kind==='root'||(d.kind==='deal'&&d.id.startsWith('deal-smergers-')))return; logN++; const li=document.createElement('li'); const em=document.createElement('em'); em.textContent=String(logN).padStart(2,'0'); const sp=document.createElement('span'); const kind=d.kind==='sector'?'Sector · ':d.kind==='deal'?(d.state==='closed'?'Closed · ':'Deal · '):(SIDE[d.side]?.n||'Person')+' · '; sp.textContent=kind+d.label; li.append(em,sp); logEl.prepend(li); }
+
+// stats / filters
+const statsEl=document.getElementById('stats');
+function updateStats(){
+  const cnt={deal:0,closed:0,sell:0,buy:0,intermediary:0,signal:0,match:0};
+  for(const id of shown){const n=docs.nodes.get(id); if(!n||!visibleNode(n))continue; if(n.kind==='deal'&&n.state==='closed')cnt.closed++; else if(n.kind==='deal')cnt.deal++; else if(n.kind==='person'&&cnt[n.side]!=null)cnt[n.side]++;}
+  for(const e of docs.edges.values()) if(e.rel==='match'&&visibleNode(docs.nodes.get(e.from))&&visibleNode(docs.nodes.get(e.to)))cnt.match++;
+  fillGeo(); fillSectors(); paintTicket();
+  statsEl.replaceChildren();
+  const mk=(label,val,col,key)=>{const b=document.createElement(key?'button':'span');b.className='stat';if(key){b.type='button';b.setAttribute('aria-pressed',String(filters[key]));b.onclick=()=>{filters[key]=!filters[key];updateStats();kick();};}
+    if(col){const d=document.createElement('i');d.className='dot';d.style.background=C[col];b.append(d);} const t=document.createElement('span');t.textContent=val+' '+label;b.append(t);statsEl.append(b);};
+  mk('open deals',cnt.deal,'deal');
+  mk('closed',cnt.closed,'closed','closed');
+  mk('direct sellers',cnt.sell,'sell','sell'); mk('direct buyers',cnt.buy,'buy','buy'); mk('intermediaries',cnt.intermediary,'mid','intermediary'); mk('other',cnt.signal,'signal','signal');
+  mk('matches',cnt.match,'match');
+  document.getElementById('empty').hidden=[...shown].some(id=>{const n=docs.nodes.get(id);return n&&n.kind!=='root';});
+}
+
+// physics
+let alpha=1; function kick(){alpha=Math.max(alpha,.6);}
+function holding(n){return !!(drag&&((drag.kind==='node'&&drag.node===n)||(drag.kind==='edge'&&(drag.edge.a===n||drag.edge.b===n))));}
+function freeNode(n){return !n.pin&&!holding(n);}
+function step(){
+  if(!replaying&&!drag)return;
+  if(alpha<=0.016)return;
+  const ns=[...N.values()].filter(n=>shown.has(n.id));
+  const k=alpha;
+  for(let i=0;i<ns.length;i++){const a=ns[i];
+    for(let j=i+1;j<ns.length;j++){const b=ns[j];let dx=b.x-a.x,dy=b.y-a.y;let d2=dx*dx+dy*dy+.01; if(d2>640000)continue; const f=(a.kind==='sector'&&b.kind==='sector'?14000:a.kind==='person'&&b.kind==='person'?1800:5200)/d2*k; const d=Math.sqrt(d2); dx/=d;dy/=d; if(freeNode(a)){a.vx-=dx*f;a.vy-=dy*f;} if(freeNode(b)){b.vx+=dx*f;b.vy+=dy*f;}}
+    if(!freeNode(a))continue;
+    if(a.kind==='sector'){const t=sectorTarget(a.id); a.vx+=(t.x-a.x)*0.06; a.vy+=(t.y-a.y)*0.06;}
+    else {a.vx-=a.x*0.0012*k; a.vy-=a.y*0.0012*k;}
+  }
+  for(const e of E){const a=e.a,b=e.b; if(e.rel==='network'||!edgeShown(e))continue; const L=e.rel==='sector'?(a.kind==='root'||b.kind==='root'?560:175):e.rel==='match'?190:70; const s=e.rel==='match'?0.002:e.rel==='sector'&&(a.kind==='root'||b.kind==='root')?0:0.04;
+    let dx=b.x-a.x,dy=b.y-a.y; const d=Math.sqrt(dx*dx+dy*dy)||1; const f=(d-L)*s*k; dx/=d;dy/=d; if(freeNode(a)){a.vx+=dx*f;a.vy+=dy*f;} if(freeNode(b)){b.vx-=dx*f;b.vy-=dy*f;}}
+  for(const n of ns){ if(!freeNode(n)){n.vx=n.vy=0;continue;} if(n.kind==='root'){n.x*=.9;n.y*=.9;n.vx=n.vy=0;continue;} n.vx*=.68;n.vy*=.68; n.x+=n.vx; n.y+=n.vy; n.x=Math.max(-1400,Math.min(1400,n.x)); n.y=Math.max(-1000,Math.min(1000,n.y)); }
+  alpha=Math.max(alpha*0.97,0.015);
+}
+
+// view
+let W=0,H=0,dpr=1, view={x:0,y:0,s:1};
+function resize(){const r=stage.getBoundingClientRect();dpr=Math.min(devicePixelRatio||1,2);W=r.width;H=r.height;cv.width=W*dpr;cv.height=H*dpr;}
+new ResizeObserver(resize).observe(stage); resize();
+function toScreen(x,y){return [(x-view.x)*view.s+W/2,(y-view.y)*view.s+H/2];}
+function toWorld(x,y){return [(x-W/2)/view.s+view.x,(y-H/2)/view.s+view.y];}
+function fit(){const ns=[...N.values()].filter(n=>visibleNode(n)&&Number.isFinite(n.x)&&Number.isFinite(n.y)); if(!ns.length){view={x:0,y:0,s:1};return;} let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9; ns.forEach(n=>{x0=Math.min(x0,n.x);y0=Math.min(y0,n.y);x1=Math.max(x1,n.x);y1=Math.max(y1,n.y);}); view.x=(x0+x1)/2;view.y=(y0+y1)/2; view.s=Math.min(2,Math.max(.3,Math.min(W/(x1-x0+160),H/(y1-y0+120))));}
+let autoFit=true;
+
+function draw(t){
+  ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,W,H);
+  if(autoFit){const ov={...view}; fit(); view.x=ov.x+(view.x-ov.x)*.06; view.y=ov.y+(view.y-ov.y)*.06; view.s=ov.s+(view.s-ov.s)*.06;}
+  const focus=selected||hover; const nb=new Set();
+  if(focus){nb.add(focus.id); E.forEach(e=>{if(e.from===focus.id)nb.add(e.to); if(e.to===focus.id)nb.add(e.from);});}
+  // edges
+  for(const e of E){ if(!edgeShown(e)||!visibleNode(e.a)||!visibleNode(e.b))continue;
+    const [x1,y1]=toScreen(e.a.x,e.a.y),[x2,y2]=toScreen(e.b.x,e.b.y);
+    const age=Math.max(0,Math.min(1,(t-Math.max(e.a.born||0,e.b.born||0))/600)); const g=reduce?1:age;
+    const dim=focus&&!(nb.has(e.from)&&nb.has(e.to)&&(e.from===focus.id||e.to===focus.id));
+    ctx.globalAlpha=dim?.06:(e.rel==='match'?.62:(e.rel==='network'?.16:.24));
+    ctx.strokeStyle=e.rel==='match'?C.match:C.line; ctx.lineWidth=e.rel==='match'?1.5:e.rel==='sector'?1.05:.8;
+    ctx.setLineDash(e.rel==='match'?[5,4]:e.rel==='network'?[2,4]:[]);
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x1+(x2-x1)*g,y1+(y2-y1)*g); ctx.stroke();
+  }
+  ctx.setLineDash([]); ctx.globalAlpha=1;
+  // nodes
+  const ns=[...N.values()].filter(visibleNode);
+  ns.sort((a,b)=>radius(a)-radius(b));
+  for(const n of ns){
+    const [x,y]=toScreen(n.x,n.y); const born=reduce?1:Math.max(0,Math.min(1,(t-(n.born||0))/450)); const ease=1-Math.pow(1-born,3);
+    const r=radius(n)*Math.max(.6,Math.min(1.4,view.s))*ease;
+    const dim=focus&&!nb.has(n.id); ctx.globalAlpha=dim?.2:1;
+    if(!reduce&&t-(n.born||0)<1400){const p=(t-n.born)/1400; ctx.strokeStyle=color(n); ctx.globalAlpha=(1-p)*.6; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(x,y,r+p*26,0,Math.PI*2); ctx.stroke(); ctx.globalAlpha=dim?.2:1;}
+    ctx.fillStyle=color(n); ctx.strokeStyle=C.bg; ctx.lineWidth=2;
+    ctx.beginPath();
+    if(n.kind==='deal'){ctx.moveTo(x,y-r*1.25);ctx.lineTo(x+r*1.25,y);ctx.lineTo(x,y+r*1.25);ctx.lineTo(x-r*1.25,y);ctx.closePath();}
+    else if(n.kind==='sector'){ctx.arc(x,y,r,0,Math.PI*2); ctx.fillStyle=C.bg; ctx.fill(); ctx.lineWidth=2.5; ctx.strokeStyle=C.sector; ctx.stroke(); ctx.beginPath(); ctx.arc(x,y,r*.45,0,Math.PI*2); ctx.fillStyle=C.sector;}
+    else ctx.arc(x,y,r,0,Math.PI*2);
+    if(n.id.startsWith('x-')){ctx.fillStyle=C.bg;ctx.fill();ctx.strokeStyle=color(n);ctx.lineWidth=2;ctx.setLineDash([2,2]);ctx.stroke();ctx.setLineDash([]);}
+    else {ctx.fill(); if(n.kind!=='sector')ctx.stroke();}
+    if(n===selected){ctx.strokeStyle=C.match;ctx.lineWidth=2;ctx.beginPath();ctx.arc(x,y,r+5,0,Math.PI*2);ctx.stroke();}
+    const showLbl=showLabel(n,nb);
+    if(showLbl&&ease>.6){ const fs=n.kind==='root'?13:n.kind==='sector'?12:n.kind==='deal'?11.5:11; ctx.font=(n.kind==='person'?'400 ':'500 ')+fs+'px '+(n.kind==='person'?'IBM Plex Sans, sans-serif':'Familjen Grotesk, sans-serif');
+      const txt=n.short||n.label; ctx.fillStyle='#e7eefc'; ctx.globalAlpha=dim?.2:(n.kind==='person'?.85:1); ctx.textBaseline='middle';
+      ctx.lineWidth=4; ctx.lineJoin='round'; ctx.strokeStyle='#02040a'; ctx.strokeText(txt,x+r+5,y); ctx.fillText(txt,x+r+5,y); }
+    ctx.globalAlpha=1;
+  }
+}
+function loop(t){ try{ step(); draw(t);}catch(err){console.error(err);} requestAnimationFrame(loop);} requestAnimationFrame(loop);
+
+// interaction
+function pick(px,py){const [wx,wy]=toWorld(px,py); let best=null,bd=1e9; for(const n of N.values()){ if(!visibleNode(n))continue; const d=Math.hypot(n.x-wx,n.y-wy)*view.s; const r=radius(n)*Math.max(.6,Math.min(1.4,view.s))+8; if(d<r&&d<bd){bd=d;best=n;}} return best;}
+function distToSeg(px,py,x1,y1,x2,y2){const dx=x2-x1,dy=y2-y1,l2=dx*dx+dy*dy||1; let t=((px-x1)*dx+(py-y1)*dy)/l2; t=Math.max(0,Math.min(1,t)); return Math.hypot(px-(x1+t*dx),py-(y1+t*dy));}
+function pickEdge(px,py){let best=null,bd=10; for(const e of E){ if(!visibleNode(e.a)||!visibleNode(e.b))continue; const [x1,y1]=toScreen(e.a.x,e.a.y),[x2,y2]=toScreen(e.b.x,e.b.y); const d=distToSeg(px,py,x1,y1,x2,y2); if(d<bd){bd=d;best=e;}} return best;}
+function localPoint(e){const r=cv.getBoundingClientRect(); return [e.clientX-r.left,e.clientY-r.top];}
+let drag=null;
+cv.addEventListener('pointerdown',e=>{
+  cv.setPointerCapture(e.pointerId);
+  const [px,py]=localPoint(e);
+  const node=pick(px,py);
+  const edge=node?null:pickEdge(px,py);
+  if(node){autoFit=false; node.vx=node.vy=0; drag={kind:'node',node,x:e.clientX,y:e.clientY,ox:node.x,oy:node.y,moved:false};}
+  else if(edge){autoFit=false; edge.a.vx=edge.a.vy=edge.b.vx=edge.b.vy=0; drag={kind:'edge',edge,x:e.clientX,y:e.clientY,ax:edge.a.x,ay:edge.a.y,bx:edge.b.x,by:edge.b.y,moved:false};}
+  else drag={kind:'pan',x:e.clientX,y:e.clientY,vx:view.x,vy:view.y,moved:false};
+});
+cv.addEventListener('pointermove',e=>{
+  const [px,py]=localPoint(e);
+  if(!drag){hover=pick(px,py); cv.classList.toggle('over',!!(hover||pickEdge(px,py))); return;}
+  const dx=e.clientX-drag.x,dy=e.clientY-drag.y;
+  if(Math.abs(dx)+Math.abs(dy)>4){drag.moved=true; autoFit=false; cv.classList.add('dragging');}
+  if(drag.kind==='node'){const [wx,wy]=toWorld(px,py); drag.node.x=wx; drag.node.y=wy; drag.node.vx=drag.node.vy=0;}
+  else if(drag.kind==='edge'){const wx=dx/view.s,wy=dy/view.s; drag.edge.a.x=drag.ax+wx; drag.edge.a.y=drag.ay+wy; drag.edge.b.x=drag.bx+wx; drag.edge.b.y=drag.by+wy; drag.edge.a.vx=drag.edge.a.vy=drag.edge.b.vx=drag.edge.b.vy=0;}
+  else {view.x=drag.vx-dx/view.s; view.y=drag.vy-dy/view.s;}
+});
+cv.addEventListener('pointerup',e=>{
+  cv.classList.remove('dragging');
+  if(drag&&drag.moved){
+    if(drag.kind==='node'){drag.node.pin=true; saveLayout(drag.node);}
+    else if(drag.kind==='edge'){drag.edge.a.pin=true; drag.edge.b.pin=true; saveLayout(drag.edge.a); saveLayout(drag.edge.b);}
+  } else if(drag&&drag.kind==='node'){drag.node.x=drag.ox; drag.node.y=drag.oy; select(drag.node);}
+  else if(drag&&drag.kind==='edge'){drag.edge.a.x=drag.ax; drag.edge.a.y=drag.ay; drag.edge.b.x=drag.bx; drag.edge.b.y=drag.by; select(drag.edge.a);}
+  else if(drag&&drag.kind!=='edge'){const [px,py]=localPoint(e); select(pick(px,py));}
+  drag=null;
+});
+cv.addEventListener('pointerleave',()=>{hover=null;});
+cv.addEventListener('wheel',e=>{e.preventDefault();autoFit=false;const r=cv.getBoundingClientRect();const [wx,wy]=toWorld(e.clientX-r.left,e.clientY-r.top); view.s=Math.min(3,Math.max(.25,view.s*Math.exp(-e.deltaY*.0015))); const [nx,ny]=toWorld(e.clientX-r.left,e.clientY-r.top); view.x+=wx-nx; view.y+=wy-ny;},{passive:false});
+document.getElementById('fit').onclick=()=>{selected=hover=null; autoFit=true;};
+document.getElementById('center').onclick=()=>{selected=hover=null; fit(); autoFit=false;};
+const lb=document.getElementById('labels'); lb.onclick=()=>{showAll=!showAll;lb.setAttribute('aria-pressed',String(showAll));lb.textContent=showAll?'Hide names':'All names';};
+
+// detail panel
+const det=document.getElementById('detail');
+function el(tag,cls,txt){const e=document.createElement(tag); if(cls)e.className=cls; if(txt!=null)e.textContent=txt; return e;}
+function postedBy(n){ if(!n||n.kind!=='deal')return null; for(const e of docs.edges.values()) if(e.rel==='posted'&&e.to===n.id) return docs.nodes.get(e.from)||null; return null; }
+function select(n){selected=n||null; det.replaceChildren();
+  if(!n){det.append(el('div','eyebrow','Selected'),el('p','hint','Tap a node for the deal, the post, and who is connected. Drag a node or an edge to place it. Drag empty space to pan.'));return;}
+  const eb=el('div','eyebrow'); const d=el('i','dot'); const poster=postedBy(n); const via=poster&&poster.side==='intermediary'; d.style.background=via?C.mid:color(n); const dealName=n.state==='closed'?'Closed deal':'Deal'; const dealRole=via?(n.state==='closed'?'Closed deal · Intermediary':'Intermediary'):dealName+(n.side?' · '+SIDE[n.side].n:''); eb.append(d,document.createTextNode(n.kind==='person'?(SIDE[n.side]?.n||'Person'):n.kind==='deal'?dealRole:n.kind==='sector'?'Sector':'Hub'));
+  det.append(eb, el('h2',null,n.label)); if(n.sub)det.append(el('div','sub',n.sub));
+  const kv=el('dl','kv');
+  const row=(k,v,copy)=>{if(!v)return; kv.append(el('dt',null,k)); const dd=el('dd'); if(/^https?:/.test(v)){const a=el('a',null,v.replace(/^https?:\/\/(www\.)?/,'')); a.href=v; a.target='_blank'; a.rel='noopener'; dd.append(a);} else dd.append(document.createTextNode(v));
+    if(copy){const b=el('button','copy','copy'); b.type='button'; b.onclick=()=>{navigator.clipboard.writeText(v).then(()=>{b.textContent='copied';},()=>{const s=getSelection(),rg=document.createRange();rg.selectNodeContents(dd);s.removeAllRanges();s.addRange(rg);});}; dd.append(b);} kv.append(dd);};
+  row('Posted',n.posted); row('Sector',n.kind==='deal'?sectorOf(n):''); row('Ticket',n.money?moneyLabel(n.money):''); row('Value',n.money?null:n.value); row('Geography',(n.places||[]).join(', ')); row('Post',n.url); row('Profile',n.profile); row('Degree',n.degree); row('Phone',n.phone,true); row('Email',n.email,true); row('Status',n.status); row('Note',n.note);
+  if(kv.children.length)det.append(kv);
+  const ls=el('div','links'); const rels=[...docs.edges.values()].filter(e=>(e.from===n.id||e.to===n.id)&&shown.has(e.from)&&shown.has(e.to));
+  if(rels.length){ls.append(el('div','eyebrow','Connected'));
+    rels.forEach(e=>{const o=docs.nodes.get(e.from===n.id?e.to:e.from); if(!o)return; const b=el('button','lk'); b.type='button'; b.append(el('span',null,REL[e.rel]||e.rel),document.createTextNode(o.label+(e.note?' — '+e.note:''))); b.onclick=()=>select(N.get(e.from===n.id?e.to:e.from)); ls.append(b);}); det.append(ls);}
+}
+
+// replay
+document.getElementById('replay').onclick=()=>{ if(replaying)return; replaying=true; const order=[...docs.nodes.values()].sort((a,b)=>(a.seq||0)-(b.seq||0)).map(d=>d.id);
+  shown.clear(); N.clear(); logEl.replaceChildren(); logN=0; rebuildEdges(); updateStats(); select(null); autoFit=true; alpha=1;
+  let i=0; const tick=()=>{ if(i>=order.length){replaying=false;return;} reveal(order[i++]); setTimeout(tick,reduce?40:380);}; tick(); };
+
+// live data from the local graph service
+const liveEl=document.getElementById('live'), liveTxt=document.getElementById('liveTxt');
+const queue=[]; let draining=false;
+function enqueue(id){queue.push(id); if(!draining){draining=true; setTimeout(drain,120);}}
+function drain(){draining=true; const next=()=>{ if(!queue.length){draining=false; alpha=0; autoFit=false; return;} queue.sort((a,b)=>(docs.nodes.get(a)?.seq||0)-(docs.nodes.get(b)?.seq||0)); const id=queue.shift(); if(!replaying)reveal(id); setTimeout(next,reduce?20:260);}; next();}
+const MONEY_RE=/(₹|rs\.?|inr|usd|us\$|\$|eur|€|gbp|£|aed|jpy|¥|yen)?\s*(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)(?:\s*(?:-|–|—|to)\s*(₹|rs\.?|inr|usd|us\$|\$|eur|€|gbp|£|aed|jpy|¥|yen)?\s*(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?))?\s*(crores?|cr|millions?|mn|billions?|bn|m|k)?\b/gi;
+const CUR_MAP={'$':'USD',usd:'USD','us$':'USD','€':'EUR',eur:'EUR','£':'GBP',gbp:'GBP','₹':'INR',rs:'INR','rs.':'INR',inr:'INR',aed:'AED','¥':'JPY',jpy:'JPY',yen:'JPY'};
+const UNIT_MAP={k:1e3,m:1e6,mn:1e6,million:1e6,millions:1e6,bn:1e9,b:1e9,billion:1e9,billions:1e9,cr:1e7,crore:1e7,crores:1e7};
+function codeOf(token){return CUR_MAP[(token||'').toLowerCase()]||'';}
+function moneySpans(text){
+  const spans=[]; if(!text)return spans; MONEY_RE.lastIndex=0; let match;
+  while((match=MONEY_RE.exec(text))){
+    const tail=text.slice(match.index+match[0].length, match.index+match[0].length+20);
+    if(/^\s*(?:%|percent|key|keys|room|rooms|guest|guests|mw\b|sq\b|bigha|\/month|\/guntha)/i.test(tail))continue;
+    if(/^\s*\+?\s*(?:p\.a\.|per annum|annually)(?!\w)/i.test(tail))continue;
+    const unit=(match[5]||'').toLowerCase();
+    let currency=codeOf(match[1])||codeOf(match[3]);
+    if(unit==='cr'||unit==='crore'||unit==='crores') currency=currency||'INR';
+    if((unit==='m'||unit==='mn')&&!currency) continue;
+    if(!unit&&!currency) continue;
+    if((unit==='billion'||unit==='billions'||unit==='bn'||unit==='b')&&!currency){
+      const window=text.slice(Math.max(0,match.index-40), match.index+match[0].length+12);
+      if(/jpy|yen|¥/i.test(window)) currency='JPY';
+      else if(/aed/i.test(window)) currency='AED';
+      else if(/usd|\$/i.test(window)) currency='USD';
+      else if(/eur|€/i.test(window)) currency='EUR';
+      else if(/gbp|£/i.test(window)) currency='GBP';
+      else continue;
+    }
+    const scale=UNIT_MAP[unit]||1;
+    let low=parseFloat(match[2].replace(/,/g,''))*(unit?scale:1);
+    let high=match[4]?parseFloat(match[4].replace(/,/g,''))*(unit?scale:1):low;
+    if(high<low){const swap=low; low=high; high=swap;}
+    if(!unit){ if(currency==='INR'&&Math.max(low,high)<1e5) continue; if(currency!=='INR'&&Math.max(low,high)<1000) continue; }
+    if(high<=0||!currency) continue;
+    if(low<=0) low=high;
+    spans.push({currency,low,high});
+  }
+  return spans;
+}
+function trimNum(n){return String(Math.round(n*100)/100).replace(/\.0+$/,'').replace(/(\.\d)0$/,'$1');}
+function fmt(amount,currency){
+  if(currency==='INR') return '₹'+trimNum(amount/1e7)+' Cr';
+  const sym=currency==='USD'?'$':currency==='EUR'?'€':currency==='GBP'?'£':currency==='JPY'?'¥':'AED ';
+  if(amount>=1e9) return sym+trimNum(amount/1e9)+'bn';
+  if(amount>=1e6) return sym+trimNum(amount/1e6)+'M';
+  if(amount>=1e3) return sym+trimNum(amount/1e3)+'k';
+  return sym+trimNum(amount);
+}
+function moneyLabel(money){
+  return money.spans.map(span=>{
+    const same=Math.abs(span.high-span.low)/Math.max(span.high,1)<0.02;
+    return same?fmt(span.high,span.currency):fmt(span.low,span.currency)+'–'+fmt(span.high,span.currency);
+  }).join(' · ');
+}
+function tagDeal(n){
+  if(!n||n.kind!=='deal') return;
+  const blob=[n.value,n.label,n.note,n.sub].filter(Boolean).join(' ');
+  const spans=moneySpans(blob);
+  n.money=spans.length?{spans}:null;
+  n.places=PLACES.filter(([,re])=>re.test(blob)).map(([name])=>name);
+}
+function scaleNow(){return SCALE[filters.currency]||SCALE.any;}
+function amountAt(pos){ const [,lo,hi]=scaleNow(); const t=Math.min(1,Math.max(0,pos/1000)); return Math.pow(10, Math.log10(lo)*(1-t)+Math.log10(hi)*t); }
+function sliderBounds(){
+  const lo=filters.t0<=0?0:amountAt(filters.t0);
+  const hi=filters.t1>=1000?Infinity:amountAt(filters.t1);
+  return [lo,hi];
+}
+function currencyOk(n){ if(filters.currency==='any') return true; return !!(n.money&&n.money.spans.some(s=>s.currency===filters.currency)); }
+function geoOk(n){ if(filters.geo==='any') return true; return (n.places||[]).includes(filters.geo); }
+function ticketOk(n){
+  const [lo,hi]=sliderBounds();
+  if(lo===0&&hi===Infinity) return true;
+  if(!n.money) return false;
+  const cur=scaleNow()[0];
+  return n.money.spans.some(span=>{
+    let a=span.low,b=span.high;
+    if(filters.currency==='any'){ if(!FX[span.currency]) return false; a*=FX[span.currency]; b*=FX[span.currency]; }
+    else if(span.currency!==cur) return false;
+    return b>=lo&&a<=hi;
+  });
+}
+function paintTicket(){
+  const [lo,hi]=sliderBounds();
+  const cur=scaleNow()[0];
+  const text=lo===0&&hi===Infinity?'Any size':lo===0?'Up to '+fmt(hi,cur):hi===Infinity?fmt(lo,cur)+'+':fmt(lo,cur)+' – '+fmt(hi,cur);
+  const out=document.getElementById('ticketLabel'); if(out) out.textContent=text;
+  const bar=document.getElementById('ticketBar');
+  if(bar){ const a=filters.t0/10, b=filters.t1/10; bar.style.background='linear-gradient(90deg, var(--line) '+a+'%, var(--ink) '+a+'%, var(--ink) '+b+'%, var(--line) '+b+'%)'; }
+  const min=document.getElementById('ticketMin'), max=document.getElementById('ticketMax');
+  if(min) min.setAttribute('aria-valuetext', text);
+  if(max) max.setAttribute('aria-valuetext', text);
+}
+function fillGeo(){
+  const sel=document.getElementById('geo'); if(!sel) return;
+  const found=new Set();
+  for(const n of docs.nodes.values()) if(n.kind==='deal') (n.places||[]).forEach(p=>found.add(p));
+  const names=[...found].sort((a,b)=>a.localeCompare(b));
+  const sig=names.join('|');
+  if(sel.dataset.sig===sig) return;
+  const current=filters.geo;
+  sel.replaceChildren(new Option('All geographies','any'));
+  names.forEach(name=>sel.append(new Option(name,name)));
+  if([...sel.options].some(o=>o.value===current)) sel.value=current; else {filters.geo='any'; sel.value='any';}
+  sel.dataset.sig=names.join('|');
+}
+function fillSectors(){
+  const sel=document.getElementById('sector'); if(!sel) return;
+  const names=[...docs.nodes.values()].filter(n=>n.kind==='sector'&&n.label).map(n=>n.label).sort((a,b)=>a.localeCompare(b));
+  const sig=names.join('|');
+  if(sel.dataset.sig===sig) return;
+  const current=filters.sector;
+  sel.replaceChildren(new Option('All sectors','any'));
+  names.forEach(name=>sel.append(new Option(name,name)));
+  if([...sel.options].some(o=>o.value===current)) sel.value=current; else {filters.sector='any'; sel.value='any';}
+  sel.dataset.sig=sig;
+}
+function applyRefine(){ updateStats(); kick(); }
+document.getElementById('currency').onchange=e=>{ filters.currency=e.target.value; filters.t0=0; filters.t1=1000; document.getElementById('ticketMin').value=0; document.getElementById('ticketMax').value=1000; applyRefine(); };
+document.getElementById('geo').onchange=e=>{ filters.geo=e.target.value; applyRefine(); };
+document.getElementById('sector').onchange=e=>{ filters.sector=e.target.value; applyRefine(); };
+function onTicket(){
+  let a=+document.getElementById('ticketMin').value, b=+document.getElementById('ticketMax').value;
+  if(a>b){ const swap=a; a=b; b=swap; document.getElementById('ticketMin').value=a; document.getElementById('ticketMax').value=b; }
+  filters.t0=a; filters.t1=b; applyRefine();
+}
+document.getElementById('ticketMin').oninput=onTicket;
+document.getElementById('ticketMax').oninput=onTicket;
+function takeNode(n){ if(!n||!n.id)return; tagDeal(n); docs.nodes.set(n.id,n); if(shown.has(n.id)&&N.get(n.id)){Object.assign(N.get(n.id),n); rebuildEdges(); updateStats();} else enqueue(n.id); }
+function takeEdge(e){ if(!e||!e.id)return; docs.edges.set(e.id,e); rebuildEdges(); updateStats(); if(selected)select(selected); }
+async function boot(){
+  liveTxt.textContent='connecting';
+  const res=await fetch(API_BASE+'/api/graph');
+  if(!res.ok){liveTxt.textContent='offline'; return;}
+  const g=await res.json();
+  (g.edges||[]).forEach(takeEdge);
+  (g.nodes||[]).sort((a,b)=>(a.seq||0)-(b.seq||0)).forEach(takeNode);
+  const es=new EventSource(API_BASE+'/api/stream?after='+(g.cursor||0));
+  es.addEventListener('node',ev=>takeNode(JSON.parse(ev.data)));
+  es.addEventListener('edge',ev=>takeEdge(JSON.parse(ev.data)));
+  es.addEventListener('status',ev=>{ const s=JSON.parse(ev.data); liveTxt.textContent=s.message||s.state||'live'; liveEl.classList.toggle('on',s.state!=='error'); });
+  es.onopen=()=>{liveEl.classList.add('on'); if(liveTxt.textContent==='connecting')liveTxt.textContent='live';};
+  es.onerror=()=>{liveEl.classList.remove('on'); liveTxt.textContent='reconnecting';};
+}
+function startScan(body){
+  liveTxt.textContent='scanning';
+  fetch('/api/scan',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}).then(async r=>{
+    const data=await r.json().catch(()=>({}));
+    if(!r.ok) liveTxt.textContent=data.error||'scan failed';
+  }).catch(()=>{liveTxt.textContent='scan failed';});
+}
+document.getElementById('scanForm').onsubmit=e=>{e.preventDefault(); const query=document.getElementById('q').value.trim(); if(!query)return; startScan({query,max_posts:12,posted_limit:'month'});};
+document.getElementById('watch').onclick=()=>startScan({watchlist:true});
+document.getElementById('sample').onclick=()=>{liveTxt.textContent='playing sample'; fetch('/api/demo',{method:'POST'});};
+boot();
+updateStats();
+})();
+</script>
